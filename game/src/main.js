@@ -481,3 +481,6 @@ window.__game = {
 };
 
 requestAnimationFrame(frame);
+
+// Modul berhasil dimuat (termasuk Three.js dari CDN) dan loop jalan.
+window.__desaStarted = true;

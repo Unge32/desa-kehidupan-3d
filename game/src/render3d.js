@@ -3,7 +3,7 @@
 // geometri dasar): desa third-person dengan ladang, rumah NPC 3 tier,
 // danau + laut, tambang, pasar, sekolah, taman, musim, cuaca, dan
 // siklus siang/malam. Tanpa shadow map (performa HP), pixelRatio dibatasi.
-import * as THREE from '../vendor/three.module.js';
+import * as THREE from 'three';
 import { TILE, MAP_W, MAP_H, CROPS, SEASONS } from './config.js';
 import { mulberry32 } from './random.js';
 import { seasonOf } from './world.js';

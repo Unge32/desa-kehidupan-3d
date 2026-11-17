@@ -158,6 +158,17 @@ function doInteract() {
     openDialog(`${b.name}.`);
     return;
   }
+  // 6b. Area pasar di alun-alun (petak 23,15): buka toko. Letaknya setelah
+  // pintu bangunan supaya AKSI di pintu Rani (23,13) tetap buka dialog
+  // rumah, bukan toko.
+  if (Math.abs(tx - 23) <= 1 && Math.abs(ty - 15) <= 1) {
+    setState('shop');
+    ui.shopTab = 'benih';
+    ui.shopSel = 0;
+    renderShop(world, ui);
+    audio.sfx('talk');
+    return;
+  }
   // 7. Sumur / air: minum.
   const t = world.terrain[ty] && world.terrain[ty][tx];
   if (t === 'well' || nearWater(world, p.x, p.y)) {

@@ -50,11 +50,38 @@ function makePerson(color, opts = {}) {
   body.position.y = 0.85;
   const head = new THREE.Mesh(new THREE.SphereGeometry(0.32, 10, 8), skin);
   head.position.y = 1.5;
+  // Wajah di sisi depan (+Z, arah hadap karakter): dua mata, hidung, mulut.
+  // Posisi sengaja sedikit menonjol dari permukaan kepala supaya tetap
+  // kelihatan di balik topi/rambut.
+  const dark = new THREE.MeshLambertMaterial({ color: '#2b2b2b' });
+  const eyeGeo = new THREE.SphereGeometry(0.05, 6, 5);
+  const eyeL = new THREE.Mesh(eyeGeo, dark);
+  eyeL.position.set(-0.11, 1.47, 0.315);
+  const eyeR = new THREE.Mesh(eyeGeo, dark);
+  eyeR.position.set(0.11, 1.47, 0.315);
+  const nose = new THREE.Mesh(new THREE.ConeGeometry(0.05, 0.1, 6), skin);
+  nose.rotation.x = Math.PI / 2;
+  nose.position.set(0, 1.41, 0.32);
+  const mouth = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.025, 0.02), dark);
+  mouth.position.set(0, 1.33, 0.295);
+  // Lengan: grup berporos di bahu supaya bisa berayun saat berjalan
+  // (dan terangkat saat memancing). Lengan kiri/kanan simetris.
+  const armGeo = new THREE.BoxGeometry(0.16, 0.55, 0.16);
+  const mkArm = (sx) => {
+    const pivot = new THREE.Group();
+    pivot.position.set(0.44 * sx, 1.15, 0);
+    const arm = new THREE.Mesh(armGeo, skin);
+    arm.position.y = -0.25;
+    pivot.add(arm);
+    return pivot;
+  };
+  const armL = mkArm(-1);
+  const armR = mkArm(1);
   const legL = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.5, 0.24), pants);
   legL.position.set(-0.18, 0.25, 0);
   const legR = legL.clone();
   legR.position.x = 0.18;
-  g.add(body, head, legL, legR);
+  g.add(body, head, eyeL, eyeR, nose, mouth, armL, armR, legL, legR);
   if (opts.hat) {
     const hat = new THREE.Mesh(
       new THREE.ConeGeometry(0.42, 0.3, 10),
@@ -72,7 +99,7 @@ function makePerson(color, opts = {}) {
     g.add(hair);
   }
   g.scale.setScalar(scale);
-  g.userData = { legL, legR, body, head };
+  g.userData = { legL, legR, armL, armR, body, head };
   return g;
 }
 
@@ -139,6 +166,9 @@ export class Renderer3D {
     this.lakeMesh = null;
     this.seaMesh = null;
     this.playerMesh = null;
+    this.rod = null;
+    this.rodTip = null;
+    this.fishLine = null;
     this.childMesh = null;
     this.groundMat = null;
     this.groundCanvas = null;
@@ -185,6 +215,9 @@ export class Renderer3D {
     this.seaMesh = null;
     this.playerMesh = null;
     this.childMesh = null;
+    this.rod = null;
+    this.rodTip = null;
+    this.fishLine = null;
     this.bobber = null;
     this.groundMat = null;
     this.groundCanvas = null;
@@ -380,17 +413,102 @@ export class Renderer3D {
     park.position.set(toWorldX(25.5 * TILE), 0, toWorldZ(23 * TILE));
     scene.add(park);
 
-    // Kios pasar di alun-alun.
-    for (const [ox, oz] of [[-2.5, -1], [2.5, -1]]) {
+    // Pasar di alun-alun: papan nama PASAR, dua kios beratap garis,
+    // dagangan warna-warni, peti sayur/buah, dan tong.
+    const plazaX = toWorldX(23 * TILE);
+    const plazaZ = toWorldZ(15 * TILE);
+    // Papan nama "PASAR" (tekstur canvas) di antara dua tiang.
+    const signCanvas = document.createElement('canvas');
+    signCanvas.width = 512;
+    signCanvas.height = 128;
+    const sctx = signCanvas.getContext('2d');
+    sctx.fillStyle = '#8d6e63';
+    sctx.fillRect(0, 0, 512, 128);
+    sctx.strokeStyle = '#5a3520';
+    sctx.lineWidth = 10;
+    sctx.strokeRect(5, 5, 502, 118);
+    sctx.fillStyle = '#fff8e7';
+    sctx.font = 'bold 84px sans-serif';
+    sctx.textAlign = 'center';
+    sctx.textBaseline = 'middle';
+    sctx.fillText('PASAR', 256, 68);
+    const signTex = new THREE.CanvasTexture(signCanvas);
+    signTex.colorSpace = THREE.SRGBColorSpace;
+    const sign = new THREE.Group();
+    const postMat = new THREE.MeshLambertMaterial({ color: '#6c4a2f' });
+    for (const sx of [-2.2, 2.2]) {
+      const post = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.11, 2.6, 6), postMat);
+      post.position.set(sx, 1.3, 0);
+      sign.add(post);
+    }
+    const board = new THREE.Mesh(
+      new THREE.BoxGeometry(4.8, 0.9, 0.15),
+      new THREE.MeshLambertMaterial({ map: signTex }),
+    );
+    board.position.y = 2.5;
+    sign.add(board);
+    sign.position.set(plazaX, 0, plazaZ - 2 * CELL);
+    scene.add(sign);
+    // Tekstur atap garis (kain tenda).
+    const stripeTex = (c1, c2) => {
+      const c = document.createElement('canvas');
+      c.width = 256;
+      c.height = 64;
+      const x = c.getContext('2d');
+      for (let i = 0; i < 8; i += 1) {
+        x.fillStyle = i % 2 === 0 ? c1 : c2;
+        x.fillRect(i * 32, 0, 32, 64);
+      }
+      const t = new THREE.CanvasTexture(c);
+      t.colorSpace = THREE.SRGBColorSpace;
+      return t;
+    };
+    const goodsColors = ['#e63946', '#ff8c1a', '#ffd60a', '#3fae4a', '#c77dff', '#ff70a6'];
+    const mkStall = (ox, roofTex, colorOff) => {
       const stall = new THREE.Group();
       const base = new THREE.Mesh(new THREE.BoxGeometry(2, 1, 1.2), new THREE.MeshLambertMaterial({ color: '#8d6e63' }));
       base.position.y = 0.5;
-      const roof = new THREE.Mesh(new THREE.BoxGeometry(2.4, 0.15, 1.6), new THREE.MeshLambertMaterial({ color: '#e63946' }));
+      const roof = new THREE.Mesh(
+        new THREE.BoxGeometry(2.4, 0.15, 1.6),
+        new THREE.MeshLambertMaterial({ map: roofTex }),
+      );
       roof.position.y = 1.7;
+      const poleGeo = new THREE.CylinderGeometry(0.06, 0.06, 0.9, 6);
+      for (const [px2, pz2] of [[-1.05, -0.65], [1.05, -0.65], [-1.05, 0.65], [1.05, 0.65]]) {
+        const pole = new THREE.Mesh(poleGeo, postMat);
+        pole.position.set(px2, 1.25, pz2);
+        stall.add(pole);
+      }
       stall.add(base, roof);
-      stall.position.set(toWorldX(23 * TILE) + ox, 0, toWorldZ(15 * TILE) + oz);
-      scene.add(stall);
+      // Dagangan warna-warni di atas meja.
+      for (let i = 0; i < 5; i += 1) {
+        const fruit = new THREE.Mesh(
+          new THREE.SphereGeometry(0.16, 8, 6),
+          new THREE.MeshLambertMaterial({ color: goodsColors[(i + colorOff) % goodsColors.length] }),
+        );
+        fruit.position.set(-0.7 + i * 0.35, 1.12, 0.1);
+        stall.add(fruit);
+      }
+      stall.position.set(plazaX + ox, 0, plazaZ - 1);
+      return stall;
+    };
+    scene.add(mkStall(-2.5, stripeTex('#e63946', '#fff8e7'), 0));
+    scene.add(mkStall(2.5, stripeTex('#2d6a4f', '#fff8e7'), 3));
+    // Peti sayur/buah + tong di sekitar kios.
+    const crateMat = new THREE.MeshLambertMaterial({ color: '#a47148' });
+    for (const [cx, cz, cc] of [[-5.2, 0.5, '#e63946'], [-5.2, 1.6, '#ffd60a'], [5.2, 0.5, '#3fae4a']]) {
+      const crate = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.8, 0.8), crateMat);
+      crate.position.set(plazaX + cx, 0.4, plazaZ + cz);
+      const top = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.15, 0.7), new THREE.MeshLambertMaterial({ color: cc }));
+      top.position.set(plazaX + cx, 0.85, plazaZ + cz);
+      scene.add(crate, top);
     }
+    const barrel = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.45, 0.5, 0.9, 10),
+      new THREE.MeshLambertMaterial({ color: '#7b4b2a' }),
+    );
+    barrel.position.set(plazaX + 5.2, 0.45, plazaZ + 1.6);
+    scene.add(barrel);
 
     // Petak ladang (dibangun dinamis di render, tapi wadah dibuat di sini).
     this.plotGroup = new THREE.Group();
@@ -416,6 +534,47 @@ export class Renderer3D {
       scene.add(g);
       this.spotMeshes.push({ spot: d, group: g, gem });
     }
+
+    // Pintu masuk tambang (tepi utara hutan galian): tangga batu bertingkat
+    // dengan dinding penahan, dua obor menyala, dan bongkahan batu penanda.
+    // Murni visual — mekanik gali tidak berubah.
+    const mine = new THREE.Group();
+    const stepMat = new THREE.MeshLambertMaterial({ color: '#8d99ae' });
+    const stepMat2 = new THREE.MeshLambertMaterial({ color: '#6c757d' });
+    for (let i = 0; i < 5; i += 1) {
+      const step = new THREE.Mesh(
+        new THREE.BoxGeometry(2.6, 0.35, 0.7),
+        i % 2 === 0 ? stepMat : stepMat2,
+      );
+      step.position.set(0, 0.18 + i * 0.35, -i * 0.65);
+      mine.add(step);
+    }
+    for (const sx of [-1.5, 1.5]) {
+      const wall = new THREE.Mesh(new THREE.BoxGeometry(0.4, 1.6, 3.4), stepMat2);
+      wall.position.set(sx, 0.8, -1.3);
+      mine.add(wall);
+    }
+    for (const sx of [-1.5, 1.5]) {
+      const pole = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.06, 0.08, 1.1, 6),
+        new THREE.MeshLambertMaterial({ color: '#5a3520' }),
+      );
+      pole.position.set(sx, 2.1, -2.6);
+      const flame = new THREE.Mesh(
+        new THREE.ConeGeometry(0.22, 0.5, 8),
+        new THREE.MeshBasicMaterial({ color: '#ff9f1c' }),
+      );
+      flame.position.set(sx, 2.85, -2.6);
+      mine.add(pole, flame);
+    }
+    const boulder = new THREE.Mesh(
+      new THREE.DodecahedronGeometry(1.0, 0),
+      new THREE.MeshLambertMaterial({ color: '#6c757d' }),
+    );
+    boulder.position.set(2.6, 0.6, -1.5);
+    mine.add(boulder);
+    mine.position.set(toWorldX(8 * TILE), 0, toWorldZ(21 * TILE));
+    scene.add(mine);
 
     // Matahari & bulan.
     this.sunMesh = new THREE.Mesh(
@@ -447,6 +606,34 @@ export class Renderer3D {
     // Pemain.
     this.playerMesh = makePerson('#2a9d8f', { hat: true });
     scene.add(this.playerMesh);
+
+    // Joran pancing (kelihatan hanya saat memancing): menempel di tangan
+    // kanan pemain, miring ke depan. Tali dihitung per frame dari ujung
+    // joran ke pelampung.
+    this.rod = new THREE.Group();
+    const rodMat = new THREE.MeshLambertMaterial({ color: '#8d6e63' });
+    const shaft = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.05, 1.9, 6), rodMat);
+    shaft.rotation.x = 0.9;
+    shaft.position.set(0, 0.65, 0.5);
+    const reel = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.09, 0.09, 0.08, 8),
+      new THREE.MeshLambertMaterial({ color: '#3d5a80' }),
+    );
+    reel.rotation.z = Math.PI / 2;
+    reel.position.set(0, 0.18, 0.12);
+    this.rod.add(shaft, reel);
+    this.rodTip = new THREE.Object3D();
+    this.rodTip.position.set(0, 1.24, 1.24);
+    this.rod.add(this.rodTip);
+    this.rod.position.set(0.44, 1.0, 0.3);
+    this.rod.visible = false;
+    this.playerMesh.add(this.rod);
+    const lineGeo = new THREE.BufferGeometry();
+    lineGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(6), 3));
+    this.fishLine = new THREE.Line(lineGeo, new THREE.LineBasicMaterial({ color: '#f4f1de' }));
+    this.fishLine.visible = false;
+    this.fishLine.frustumCulled = false;
+    scene.add(this.fishLine);
 
     // NPC: satu figur per warga, warna dari config.
     for (const n of world.npcs) {
@@ -536,6 +723,9 @@ export class Renderer3D {
     const swing = p.moving ? Math.sin(t * 10) * 0.5 : 0;
     pm.userData.legL.rotation.x = swing;
     pm.userData.legR.rotation.x = -swing;
+    // Lengan berayun berlawanan dengan kaki; lengan kanan terangkat saat memancing.
+    pm.userData.armL.rotation.x = -swing;
+    pm.userData.armR.rotation.x = world.fish.active ? -1.2 : swing;
 
     // NPC.
     for (const n of world.npcs) {
@@ -654,13 +844,25 @@ export class Renderer3D {
     // Titik galian: penanda hilang bila sudah digali.
     for (const s of this.spotMeshes) s.gem.visible = s.spot.available;
 
-    // Pelampung pancing.
+    // Pelampung pancing + joran + tali.
     if (world.fish.active) {
       this.bobber.visible = true;
       const dir = { down: [0, 1], up: [0, -1], left: [-1, 0], right: [1, 0] }[p.dir] || [0, 1];
       this.bobber.position.set(px + dir[0] * 1.6, 0.15 + Math.sin(t * 3) * 0.05, pz + dir[1] * 1.6);
+      if (this.rod) this.rod.visible = true;
+      if (this.fishLine && this.rodTip) {
+        const tip = new THREE.Vector3();
+        this.rodTip.getWorldPosition(tip);
+        const pos = this.fishLine.geometry.attributes.position;
+        pos.setXYZ(0, tip.x, tip.y, tip.z);
+        pos.setXYZ(1, this.bobber.position.x, this.bobber.position.y, this.bobber.position.z);
+        pos.needsUpdate = true;
+        this.fishLine.visible = true;
+      }
     } else {
       this.bobber.visible = false;
+      if (this.rod) this.rod.visible = false;
+      if (this.fishLine) this.fishLine.visible = false;
     }
 
     // Langit, matahari/bulan, cahaya menurut jam.

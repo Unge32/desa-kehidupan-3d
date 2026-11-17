@@ -1,0 +1,215 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>Desa Kehidupan 3D — simulasi hidup desa</title>
+<style>
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #1b4332; font-family: system-ui, -apple-system, 'Segoe UI', sans-serif; }
+  #game { position: fixed; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
+  #status { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+
+  /* --- HUD atas --- */
+  #hud { position: fixed; top: 0; left: 0; right: 0; z-index: 5; pointer-events: none;
+    background: linear-gradient(rgba(10,25,15,0.78), rgba(10,25,15,0.55));
+    color: #fff; padding: 6px 10px calc(6px + env(safe-area-inset-top, 0px)); }
+  #hud-row1 { display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: center; font-size: 15px; font-weight: 700; }
+  #hud-gold { color: #ffd60a; font-size: 17px; }
+  #hud-fest { color: #ff70a6; }
+  #hud-row2 { display: flex; gap: 10px; margin-top: 4px; flex-wrap: wrap; align-items: center; }
+  .need { display: flex; align-items: center; gap: 4px; font-size: 11px; font-weight: 700; }
+  .need .bar { width: 52px; height: 8px; background: rgba(255,255,255,0.25); border-radius: 4px; overflow: hidden; }
+  .need .bar i { display: block; height: 100%; border-radius: 4px; }
+  #seed-row { display: flex; gap: 5px; margin-top: 5px; flex-wrap: wrap; pointer-events: auto; }
+  .seed-chip { pointer-events: auto; border: 2px solid rgba(255,255,255,0.5); background: rgba(0,0,0,0.45);
+    color: #fff; border-radius: 16px; padding: 4px 9px; font-size: 12px; font-weight: 700; cursor: pointer; }
+  .seed-chip.sel { border-color: #ffd60a; background: rgba(255,214,10,0.25); color: #ffd60a; }
+  #hud-married { color: #ff70a6; font-size: 12px; font-weight: 700; }
+
+  /* --- Pesan singkat + banner mancing --- */
+  #message { position: fixed; top: 150px; left: 50%; transform: translateX(-50%); z-index: 6;
+    background: rgba(10,25,15,0.88); color: #fff; padding: 8px 16px; border-radius: 10px;
+    font-size: 14px; font-weight: 600; max-width: 92vw; text-align: center; display: none; pointer-events: none; }
+  #fish-banner { position: fixed; top: 32%; left: 50%; transform: translateX(-50%); z-index: 6;
+    background: rgba(10,25,15,0.88); color: #ffd60a; padding: 12px 20px; border-radius: 12px;
+    font-size: 20px; font-weight: 800; text-align: center; display: none; pointer-events: none; }
+
+  /* --- Kontrol sentuh --- */
+  #touch { position: fixed; inset: 0; z-index: 7; pointer-events: none; }
+  #joy { position: absolute; left: 16px; bottom: calc(18px + env(safe-area-inset-bottom, 0px));
+    width: 128px; height: 128px; border-radius: 50%; background: rgba(0,0,0,0.35);
+    border: 2px solid rgba(255,255,255,0.5); pointer-events: auto; touch-action: none; }
+  #joy-knob { position: absolute; left: 50%; top: 50%; width: 56px; height: 56px; margin: -28px 0 0 -28px;
+    border-radius: 50%; background: rgba(255,255,255,0.75); border: 2px solid #fff; }
+  #actions { position: absolute; right: 14px; bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+    display: flex; flex-direction: column; align-items: flex-end; gap: 8px; pointer-events: auto; }
+  .tbtn { border: 2px solid rgba(255,255,255,0.7); background: rgba(10,25,15,0.62); color: #fff;
+    border-radius: 14px; font-weight: 800; cursor: pointer; touch-action: none; user-select: none; }
+  .tbtn:active { background: rgba(255,214,10,0.5); }
+  #btn-action { width: 84px; height: 84px; border-radius: 50%; font-size: 17px; background: rgba(42,157,143,0.75); }
+  #btn-fish { width: 84px; height: 52px; font-size: 14px; }
+  #btn-fish.disabled { opacity: 0.45; }
+  #btn-fish.bite { background: rgba(255,214,10,0.85); color: #222; border-color: #ffd60a; animation: pulse 0.5s infinite alternate; }
+  @keyframes pulse { from { transform: scale(1); } to { transform: scale(1.08); } }
+  .trow { display: flex; gap: 8px; }
+  #btn-bag, #btn-shop { width: 76px; height: 48px; font-size: 14px; }
+
+  /* --- Overlay panel --- */
+  .overlay { position: fixed; inset: 0; z-index: 10; display: none; align-items: center; justify-content: center;
+    background: rgba(0,0,0,0.6); padding: 12px; }
+  .overlay.show { display: flex; }
+  .panel { background: #fff8e7; color: #222; border-radius: 16px; border: 4px solid #8d6e63;
+    max-width: 640px; width: 100%; max-height: 88vh; overflow-y: auto; padding: 18px; }
+  .panel h1, .panel h2 { margin: 0 0 8px 0; }
+  .panel p { margin: 6px 0; line-height: 1.45; }
+  .bigbtn { display: block; width: 100%; padding: 14px; margin-top: 12px; font-size: 18px; font-weight: 800;
+    border: none; border-radius: 12px; background: #2a9d8f; color: #fff; cursor: pointer; }
+  .bigbtn.gold { background: #e9a319; color: #222; }
+  .bigbtn:active { opacity: 0.8; }
+  #overlay-title { background: linear-gradient(#87ceeb 0%, #aee2ff 45%, #5dbb63 45%, #2f9e44 100%); }
+  #overlay-title .panel { background: rgba(10,25,15,0.82); color: #fff; border-color: #ffd60a; text-align: center; }
+  #overlay-title h1 { color: #ffd60a; font-size: 34px; letter-spacing: 1px; }
+  #overlay-title .sub { font-size: 15px; opacity: 0.95; }
+  .tabs { display: flex; gap: 6px; flex-wrap: wrap; margin: 10px 0; }
+  .tab { flex: 1; min-width: 72px; padding: 10px 4px; border: 2px solid #ccc; border-radius: 10px;
+    background: #eee; font-weight: 800; font-size: 13px; cursor: pointer; }
+  .tab.sel { background: #ffd60a; border-color: #e9a319; }
+  .itemrow { display: flex; justify-content: space-between; gap: 8px; align-items: center;
+    width: 100%; text-align: left; padding: 12px; margin-bottom: 6px; border: 2px solid #ddd;
+    border-radius: 10px; background: #fff; cursor: pointer; font-size: 14px; }
+  .itemrow.sel { border-color: #e76f51; background: #ffe8a3; }
+  .itemrow .price { font-weight: 800; color: #2a9d8f; white-space: nowrap; }
+  .itemrow .desc { display: block; font-size: 12px; color: #666; }
+  .hint { font-size: 13px; color: #777; margin-top: 10px; }
+  #dialog-text { font-size: 17px; line-height: 1.5; }
+  #overlay-dialog .panel { border-color: #8d6e63; }
+  .center { text-align: center; }
+  .win-title { color: #b8860b; font-size: 32px; }
+  .lose-title { color: #c0392b; font-size: 32px; }
+  .help-lines { font-size: 14px; line-height: 1.55; white-space: pre-line; }
+  @media (min-width: 700px) {
+    #joy { width: 140px; height: 140px; }
+    .need .bar { width: 80px; }
+    #hud-row1 { font-size: 16px; }
+  }
+  @media (max-width: 700px) {
+    #message { top: 175px; }
+  }
+</style>
+</head>
+<body>
+<canvas id="game" aria-label="Desa Kehidupan 3D: simulasi hidup desa — berkebun, memancing, menambang, beternak, berkeluarga"></canvas>
+<p id="status" role="status" aria-live="polite"></p>
+
+<div id="hud">
+  <div id="hud-row1">
+    <span id="hud-gold">🪙 500G</span>
+    <span id="hud-day">Hari 1/28 • Musim Semi • Cerah • 06:00</span>
+    <span id="hud-fest"></span>
+  </div>
+  <div id="hud-row2">
+    <span class="need">🍞 <span class="bar"><i id="bar-hunger" style="background:#e76f51;width:100%"></i></span></span>
+    <span class="need">💧 <span class="bar"><i id="bar-thirst" style="background:#2a9dcc;width:100%"></i></span></span>
+    <span class="need">⚡ <span class="bar"><i id="bar-energy" style="background:#e9c46a;width:100%"></i></span></span>
+    <span class="need">❤️ <span class="bar"><i id="bar-health" style="background:#e63946;width:100%"></i></span></span>
+    <span id="hud-married"></span>
+  </div>
+  <div id="seed-row"></div>
+</div>
+
+<div id="message"></div>
+<div id="fish-banner"></div>
+
+<div id="touch">
+  <div id="joy"><div id="joy-knob"></div></div>
+  <div id="actions">
+    <button class="tbtn" id="btn-fish">🎣<br>PANCING</button>
+    <button class="tbtn" id="btn-action">AKSI</button>
+    <div class="trow">
+      <button class="tbtn" id="btn-bag">🎒 TAS</button>
+      <button class="tbtn" id="btn-shop">🛒 TOKO</button>
+    </div>
+  </div>
+</div>
+
+<div class="overlay show" id="overlay-title">
+  <div class="panel">
+    <h1>DESA KEHIDUPAN 3D</h1>
+    <p class="sub">Berkebun • Memancing • Menambang • Beternak • Berkeluarga</p>
+    <p>Tujuan: beli <b>RUMAH BESAR (50.000G)</b> sebelum akhir Tahun 1 (28 hari).</p>
+    <p class="sub">🕹️ Joystick kiri untuk jalan • tombol AKSI untuk cangkul, tanam, siram, panen, gali, bicara<br>
+    🎣 PANCING di tepi air — tarik saat muncul "❗"</p>
+    <p class="sub">⌨️ Desktop: WASD jalan • E aksi • F mancing • I tas • B toko • P jeda • H bantuan</p>
+    <button class="bigbtn gold" id="btn-start">▶ &nbsp;MULAI BERMAIN</button>
+    <p class="sub" style="font-size:12px;opacity:0.8">Game orisinal — seni &amp; suara prosedural, tanpa aset berhak cipta.</p>
+  </div>
+</div>
+
+<div class="overlay" id="overlay-dialog">
+  <div class="panel">
+    <p id="dialog-text"></p>
+    <button class="bigbtn" id="btn-dialog-next">Lanjut ➜</button>
+  </div>
+</div>
+
+<div class="overlay" id="overlay-shop">
+  <div class="panel">
+    <h2 id="shop-title">🛒 PASAR DESA</h2>
+    <div class="tabs" id="shop-tabs"></div>
+    <div id="shop-items"></div>
+    <p class="hint">Ketuk barang untuk membeli • Esc / B untuk menutup</p>
+    <button class="bigbtn" id="btn-shop-close">Tutup</button>
+  </div>
+</div>
+
+<div class="overlay" id="overlay-inv">
+  <div class="panel">
+    <h2 id="inv-title">🎒 TAS</h2>
+    <div id="inv-items"></div>
+    <button class="bigbtn gold" id="btn-sell-all">💰 JUAL SEMUA (J)</button>
+    <button class="bigbtn" id="btn-use-item">PAKAI / MAKAN (Enter)</button>
+    <button class="bigbtn" id="btn-inv-close">Tutup</button>
+  </div>
+</div>
+
+<div class="overlay" id="overlay-pause">
+  <div class="panel center">
+    <h2>⏸ JEDA</h2>
+    <p id="pause-info"></p>
+    <div id="pause-tasks"></div>
+    <p class="hint">P / Esc lanjut • H bantuan • Enter mulai ulang dari awal</p>
+    <button class="bigbtn" id="btn-resume">Lanjut Main</button>
+  </div>
+</div>
+
+<div class="overlay" id="overlay-help">
+  <div class="panel">
+    <h2>📖 CARA BERMAIN</h2>
+    <div class="help-lines" id="help-text"></div>
+    <button class="bigbtn" id="btn-help-close">Tutup</button>
+  </div>
+</div>
+
+<div class="overlay" id="overlay-win">
+  <div class="panel center">
+    <h2 class="win-title">🏆 MENANG! 🏆</h2>
+    <p>Kamu membeli RUMAH BESAR dan menjadi legenda Desa Kehidupan!</p>
+    <p id="win-stats"></p>
+    <button class="bigbtn gold" id="btn-win-restart">Main Lagi (Enter)</button>
+  </div>
+</div>
+
+<div class="overlay" id="overlay-lose">
+  <div class="panel center">
+    <h2 class="lose-title">TAHUN BERAKHIR</h2>
+    <p>Tahun 1 berlalu dan Rumah Besar belum terbeli...</p>
+    <p id="lose-stats"></p>
+    <p class="hint">Tips: gali berlian di hutan, mancing di danau, dan jual panen di Festival Panen (harga 2x).</p>
+    <button class="bigbtn gold" id="btn-lose-restart">Coba Lagi (Enter)</button>
+  </div>
+</div>
+
+<script type="module" src="./src/main.js"></script>
+</body>
+</html>

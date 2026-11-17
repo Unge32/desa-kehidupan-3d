@@ -210,6 +210,34 @@
   </div>
 </div>
 
+<script>
+  // Kalau pustaka 3D dari CDN gagal dimuat (mis. internet putus), game tidak
+  // bisa jalan — beri tahu pemain, bukan layar kosong. Modul game menandai
+  // window.__desaStarted = true begitu berhasil boot.
+  (function () {
+    var el = null, shown = false, n = 0;
+    var t = setInterval(function () {
+      if (window.__desaStarted) {
+        if (shown && el) { el.style.display = 'none'; shown = false; }
+        clearInterval(t);
+        return;
+      }
+      n += 1;
+      if (n === 20 && !shown) {
+        el = document.getElementById('message');
+        if (el) {
+          shown = true;
+          el.style.display = 'block';
+          el.textContent = 'Game gagal dimuat — periksa koneksi internet lalu muat ulang halaman.';
+        }
+      }
+      if (n >= 60) clearInterval(t);
+    }, 1000);
+  })();
+</script>
+<script type="importmap">
+  { "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js" } }
+</script>
 <script type="module" src="./src/main.js"></script>
 </body>
 </html>
